@@ -233,8 +233,14 @@ def store_summary(grp):
 
     # ✅ SAFE ISSUE
     if 'ISSUE_CATEGORY' in grp.columns:
-        top_issues = grp['ISSUE_CATEGORY'].value_counts().head(3).index.tolist()
-    else:
+if 'SENTIMENT' in grp.columns and 'BUYER_NAME' in grp.columns:
+    angry_names = [
+        str(x) for x in grp.loc[grp['SENTIMENT']=='ANGRY', 'BUYER_NAME']
+        .dropna().unique()[:5]
+    ]
+else:
+    angry_names = []
+else:
         top_issues = []
 
     # ✅ SAFE NAMES
@@ -286,8 +292,17 @@ def store_summary(grp):
     unreplied  = int(grp['IS_UNREPLIED'].sum())
     unresolved = int(grp['IS_UNRESOLVED'].sum())
     angry      = int((grp['SENTIMENT']=='ANGRY').sum())
+if 'ISSUE_CATEGORY' in grp.columns:
     top_issues = grp['ISSUE_CATEGORY'].value_counts().head(3).index.tolist()
-    angry_names= [str(x) for x in grp[grp['SENTIMENT']=='ANGRY']['BUYER_NAME'].dropna().unique()[:5]]
+else:
+    top_issues = []
+    if 'SENTIMENT' in grp.columns and 'BUYER_NAME' in grp.columns:
+    angry_names = [
+        str(x) for x in grp.loc[grp['SENTIMENT']=='ANGRY', 'BUYER_NAME']
+        .dropna().unique()[:5]
+    ]
+else:
+    angry_names = []
     avg_csat   = round(grp['CSAT_SCORE'].mean(), 2)
     country    = grp['COUNTRY_CODE'].mode().iloc[0] if len(grp)>0 else ''
     if   angry>=3 or unreplied>=10 or unresolved>=15: priority='P1 - CRITICAL'
