@@ -249,7 +249,7 @@ def store_summary(grp):
     if 'Refund/Cancel'      in top_issues: actions.append("Process pending refunds in Seller Center")
     return pd.Series({
         'PRIORITY':          priority,
-        'PLATFORM':          grp['PLATFORM'].iloc[0],
+        'PLATFORM':          grp.name[0],
         'STORE_CODE':        grp['STORE_CODE'].iloc[0],
         'SITE_NICK_NAME_ID': grp['SITE_NICK_NAME_ID'].mode().iloc[0] if grp['SITE_NICK_NAME_ID'].dropna().shape[0]>0 else '',
         'COUNTRY':           country,
