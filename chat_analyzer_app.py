@@ -231,6 +231,50 @@ def store_summary(grp):
     unreplied  = int(grp['IS_UNREPLIED'].sum())
     unresolved = int(grp['IS_UNRESOLVED'].sum())
     angry      = int((grp['SENTIMENT']=='ANGRY').sum())
+
+    top_issues = grp['ISSUE_CATEGORY'].value_counts().head(3).index.tolist()
+    angry_names= [str(x) for x in grp[grp['SENTIMENT']=='ANGRY']['BUYER_NAME'].dropna().unique()[:5]]
+
+    avg_csat   = round(grp['CSAT_SCORE'].mean(), 2)
+    country    = grp['COUNTRY_CODE'].mode().iloc[0] if len(grp)>0 else ''
+
+    if   angry>=3 or unreplied>=10 or unresolved>=15: priority='P1 - CRITICAL'
+    elif angry>=1 or unreplied>=5  or unresolved>=8:  priority='P2 - HIGH'
+    elif unreplied>=2 or unresolved>=3:               priority='P3 - MEDIUM'
+    else:                                             priority='P4 - LOW'
+
+    actions = []
+    if unreplied  > 0: actions.append(f"Reply to {unreplied} unreplied chat(s) immediately")
+    if angry      > 0: actions.append(f"Address {angry} angry buyer(s): {', '.join(angry_names[:3])}")
+    if unresolved > 0: actions.append(f"Resolve {unresolved} open ticket(s)")
+    if avg_csat < 2.5: actions.append("CSAT critical — review all negative chats & escalate")
+    if 'Shipping/Delivery'  in top_issues: actions.append("Investigate delivery delays")
+    if 'Wrong/Damaged Item' in top_issues: actions.append("Review packing quality — coordinate with warehouse")
+    if 'Refund/Cancel'      in top_issues: actions.append("Process pending refunds in Seller Center")
+
+    platform, store_code, site_nick = grp.name
+
+    return pd.Series({
+        'PRIORITY': priority,
+        'PLATFORM': platform,
+        'STORE_CODE': store_code,
+        'SITE_NICK_NAME_ID': site_nick,
+        'COUNTRY': country,
+        'TOTAL_CHATS_7D': len(grp),
+        'UNREPLIED': unreplied,
+        'AUTO_REPLY_ONLY': int(grp['ONLY_AUTO_REPLIED'].sum()),
+        'UNRESOLVED': unresolved,
+        'ANGRY_BUYERS': angry,
+        'NEUTRAL_BUYERS': int((grp['SENTIMENT']=='NEUTRAL').sum()),
+        'HAPPY_BUYERS': int((grp['SENTIMENT']=='HAPPY').sum()),
+        'AVG_CSAT': avg_csat,
+        'TOP_ISSUES': ' | '.join(top_issues),
+        'ANGRY_BUYER_NAMES': ', '.join(angry_names) if angry_names else '-',
+        'ACTION_ITEMS': '\n'.join(f"• {a}" for a in actions) if actions else '✓ No critical actions',
+    })
+    unreplied  = int(grp['IS_UNREPLIED'].sum())
+    unresolved = int(grp['IS_UNRESOLVED'].sum())
+    angry      = int((grp['SENTIMENT']=='ANGRY').sum())
     top_issues = grp['ISSUE_CATEGORY'].value_counts().head(3).index.tolist()
     angry_names= [str(x) for x in grp[grp['SENTIMENT']=='ANGRY']['BUYER_NAME'].dropna().unique()[:5]]
     avg_csat   = round(grp['CSAT_SCORE'].mean(), 2)
@@ -460,8 +504,33 @@ if uploaded:
     lazada_rows = (df['PLATFORM']=='Lazada').sum()
     st.success(f"✅ Loaded — **Shopee: {shopee_rows:,} rows** · **Lazada: {lazada_rows:,} rows** · Data up to **{TODAY.date()}**")
 
-    with st.spinner("Running analysis on both platforms…"):
-        df['IS_AUTO_REPLY'] = df.apply(
+with st.spinner("Running analysis on both platforms…"):
+
+    # ✅ Clean columns
+    df.columns = df.columns.str.strip().str.upper()
+
+    # ✅ Auto reply detection (FASTER)
+    df['IS_AUTO_REPLY'] = (
+        (df['SENDER'] == 'seller') &
+        (df['MESSAGE_PARSED']
+         .astype(str)
+         .str.lower()
+         .apply(lambda x: any(re.search(p, x) for p in AUTO_REPLY_PATTERNS)))
+    )
+
+    # ✅ Conversation level analysis
+    conv_df = df.groupby('CONVERSATION_ID', group_keys=False).apply(analyse_conv).reset_index()
+
+    # ✅ Last 7 days filter
+    conv_7d = conv_df[conv_df['LAST_MSG_TIME'] >= SEVEN_DAYS_AGO].copy()
+    conv_7d['DATE'] = conv_7d['LAST_MSG_TIME'].dt.date
+
+    # ✅ Store summary
+    summary_df = conv_7d.groupby(
+        ['PLATFORM','STORE_CODE','SITE_NICK_NAME_ID']
+    ).apply(store_summary).reset_index(drop=True)
+
+    summary_df = summary_df.sort_values(['PRIORITY','PLATFORM','UNREPLIED'], ascending=[True,True,False])        df['IS_AUTO_REPLY'] = df.apply(
             lambda r: is_auto_reply(r['MESSAGE_PARSED']) if r['SENDER']=='seller' else False, axis=1
         )
         conv_7d.columns = (
