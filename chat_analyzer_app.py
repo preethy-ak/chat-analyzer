@@ -247,11 +247,16 @@ def store_summary(grp):
     if 'Shipping/Delivery'  in top_issues: actions.append("Investigate delivery delays")
     if 'Wrong/Damaged Item' in top_issues: actions.append("Review packing quality — coordinate with warehouse")
     if 'Refund/Cancel'      in top_issues: actions.append("Process pending refunds in Seller Center")
+    def store_summary(grp):
+    platform, store_code, site_nick = grp.name
+
     return pd.Series({
         'PRIORITY':          priority,
-        'PLATFORM':          grp.name[0],
-        'STORE_CODE':        grp['STORE_CODE'].iloc[0],
-        'SITE_NICK_NAME_ID': grp['SITE_NICK_NAME_ID'].mode().iloc[0] if grp['SITE_NICK_NAME_ID'].dropna().shape[0]>0 else '',
+        'PLATFORM': platform,
+        'STORE_CODE': store_code,
+        'SITE_NICK_NAME_ID': site_nick,
+        # your metrics
+        'TOTAL_CHATS':       len(grp),
         'COUNTRY':           country,
         'TOTAL_CHATS_7D':    len(grp),
         'UNREPLIED':         unreplied,
@@ -264,9 +269,11 @@ def store_summary(grp):
         'TOP_ISSUES':        ' | '.join(top_issues),
         'ANGRY_BUYER_NAMES': ', '.join(angry_names) if angry_names else '-',
         'ACTION_ITEMS':      '\n'.join(f"• {a}" for a in actions) if actions else '✓ No critical actions',
+        # safe optional columns
+        'AVG_RESPONSE_TIME': grp['RESPONSE_TIME'].mean() if 'RESPONSE_TIME' in grp.columns else None,
+        'TOTAL_ORDERS': grp['ORDER_ID'].nunique() if 'ORDER_ID' in grp.columns else None,
     })
-
-def build_excel(summary_df, trend_df, detail_df, today, seven_days_ago):
+   def build_excel(summary_df, trend_df, detail_df, today, seven_days_ago):
     import openpyxl
     from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
     wb  = openpyxl.Workbook()
@@ -457,7 +464,12 @@ if uploaded:
         df['IS_AUTO_REPLY'] = df.apply(
             lambda r: is_auto_reply(r['MESSAGE_PARSED']) if r['SENDER']=='seller' else False, axis=1
         )
-        conv_df = df.groupby('CONVERSATION_ID', group_keys=False).apply(analyse_conv).reset_index()
+        conv_7d.columns = (
+    conv_7d.columns
+    .str.strip()
+    .str.upper()
+)
+       conv_df = df.groupby('CONVERSATION_ID', group_keys=False).apply(analyse_conv).reset_index()
         conv_7d = conv_df[conv_df['LAST_MSG_TIME'] >= SEVEN_DAYS_AGO].copy()
         conv_7d['DATE'] = conv_7d['LAST_MSG_TIME'].dt.date
 
