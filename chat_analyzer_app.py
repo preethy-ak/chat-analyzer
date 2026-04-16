@@ -490,7 +490,23 @@ if uploaded:
         detail_df['IS_UNRESOLVED']   =detail_df['IS_UNRESOLVED'].map({True:'YES',False:'NO'})
         detail_df=detail_df.sort_values(['PLATFORM','STORE_CODE','IS_UNREPLIED','SENTIMENT'],ascending=[True,True,False,True])
 
-    # ── FILTERS ────────────────────────────────────────────────────────────────
+    # ── TODAY: build snapshot data ─────────────────────────────────────────────
+    conv_today = conv_df[conv_df['LAST_MSG_TIME'].dt.normalize() == TODAY].copy()
+    conv_today['DATE'] = conv_today['LAST_MSG_TIME'].dt.date
+
+    today_summary_df = pd.DataFrame()
+    today_detail_df  = pd.DataFrame()
+    if len(conv_today) > 0:
+        today_summary_df = conv_today.groupby(['PLATFORM','STORE_CODE','SITE_NICK_NAME_ID'], group_keys=False).apply(store_summary).reset_index(drop=True)
+        today_summary_df = today_summary_df.sort_values(['PRIORITY','PLATFORM','UNREPLIED'], ascending=[True,True,False])
+        td = conv_today[dcols].copy()
+        td['IS_UNREPLIED']    = td['IS_UNREPLIED'].map({True:'YES',False:'NO'})
+        td['ONLY_AUTO_REPLIED']= td['ONLY_AUTO_REPLIED'].map({True:'YES',False:'NO'})
+        td['SELLER_STALLED']  = td['SELLER_STALLED'].map({True:'YES',False:'NO'})
+        td['IS_UNRESOLVED']   = td['IS_UNRESOLVED'].map({True:'YES',False:'NO'})
+        today_detail_df = td.sort_values(['PLATFORM','STORE_CODE','IS_UNREPLIED','SENTIMENT'], ascending=[True,True,False,True])
+
+    # ── FILTERS (shared across both tabs) ─────────────────────────────────────
     st.markdown("---")
     st.subheader("🔍 Filters")
     col1, col2, col3 = st.columns(3)
@@ -506,50 +522,19 @@ if uploaded:
     all_accounts = sorted(filtered_by_store['SITE_NICK_NAME_ID'].dropna().unique().tolist())
     sel_account  = col3.multiselect("Account (Site Nick Name ID)", all_accounts, default=all_accounts)
 
-    # Apply filters to all dataframes
     def apply_filters(df):
+        if df is None or len(df) == 0: return df
         mask = pd.Series([True]*len(df), index=df.index)
         if sel_platform: mask &= df['PLATFORM'].isin(sel_platform)
         if sel_store:    mask &= df['STORE_CODE'].isin(sel_store)
         if sel_account:  mask &= df['SITE_NICK_NAME_ID'].isin(sel_account)
         return df[mask]
 
-    f_summary = apply_filters(summary_df)
-    f_trend   = apply_filters(trend_df)
-    f_detail  = apply_filters(detail_df)
-
-    # ── METRICS ────────────────────────────────────────────────────────────────
-    st.markdown("---")
-    st.subheader(f"📊 Overview — {SEVEN_DAYS_AGO.date()} → {TODAY.date()}")
-
-    c1,c2,c3,c4,c5,c6 = st.columns(6)
-    total_convs = len(f_detail)
-    c1.metric("Conversations (7d)", f"{total_convs:,}")
-    c2.metric("Accounts", len(f_summary))
-    c3.metric("😡 Unreplied", int((f_detail['IS_UNREPLIED']=='YES').sum()))
-    c4.metric("📭 Unresolved", int((f_detail['IS_UNRESOLVED']=='YES').sum()))
-    c5.metric("😡 Angry Buyers", f_summary['ANGRY_BUYERS'].sum())
-    c6.metric("Avg CSAT", f"{f_summary['AVG_CSAT'].mean():.2f} / 5")
-
-    p_counts = f_summary['PRIORITY'].value_counts()
-    cols = st.columns(4)
-    for i,(p,color) in enumerate([('P1 - CRITICAL','🔴'),('P2 - HIGH','🟠'),('P3 - MEDIUM','🟡'),('P4 - LOW','🟢')]):
-        cols[i].metric(f"{color} {p}", p_counts.get(p,0))
-
-    # Platform split
-    if len(sel_platform) > 1:
-        st.markdown("**Platform split (filtered)**")
-        plat_cols = st.columns(2)
-        for i, plat in enumerate(['Shopee','Lazada']):
-            pc = f_summary[f_summary['PLATFORM']==plat]
-            if len(pc)>0:
-                plat_cols[i].metric(f"{'🔴' if plat=='Shopee' else '🔵'} {plat}", f"{pc['TOTAL_CHATS_7D'].sum():,} chats · {pc['UNREPLIED'].sum()} unreplied")
-
-    # ── SUMMARY TABLE ──────────────────────────────────────────────────────────
-    st.subheader("📋 Summary & Action Items")
-    display_summary = f_summary[['PRIORITY','PLATFORM','STORE_CODE','SITE_NICK_NAME_ID','COUNTRY',
-                                  'TOTAL_CHATS_7D','UNREPLIED','UNRESOLVED','ANGRY_BUYERS',
-                                  'NEUTRAL_BUYERS','HAPPY_BUYERS','AVG_CSAT','TOP_ISSUES','ACTION_ITEMS']]
+    f_summary      = apply_filters(summary_df)
+    f_trend        = apply_filters(trend_df)
+    f_detail       = apply_filters(detail_df)
+    f_today_sum    = apply_filters(today_summary_df) if len(today_summary_df)>0 else today_summary_df
+    f_today_detail = apply_filters(today_detail_df)  if len(today_detail_df)>0  else today_detail_df
 
     def style_summary(df):
         def color_priority(val):
@@ -573,19 +558,119 @@ if uploaded:
             .applymap(color_angry, subset=['ANGRY_BUYERS'])\
             .applymap(color_csat, subset=['AVG_CSAT'])
 
-    st.dataframe(style_summary(display_summary), use_container_width=True, height=450)
+    def render_metrics(detail_df, summary_df, label):
+        c1,c2,c3,c4,c5,c6 = st.columns(6)
+        c1.metric(f"Conversations ({label})", f"{len(detail_df):,}")
+        c2.metric("Accounts", len(summary_df))
+        c3.metric("😡 Unreplied",   int((detail_df['IS_UNREPLIED']=='YES').sum())  if len(detail_df)>0 else 0)
+        c4.metric("📭 Unresolved",  int((detail_df['IS_UNRESOLVED']=='YES').sum()) if len(detail_df)>0 else 0)
+        c5.metric("😡 Angry Buyers", int(summary_df['ANGRY_BUYERS'].sum())          if len(summary_df)>0 else 0)
+        c6.metric("Avg CSAT", f"{summary_df['AVG_CSAT'].mean():.2f} / 5"           if len(summary_df)>0 else "—")
+        if len(summary_df)>0:
+            p_counts = summary_df['PRIORITY'].value_counts()
+            pcols = st.columns(4)
+            for i,(p,icon) in enumerate([('P1 - CRITICAL','🔴'),('P2 - HIGH','🟠'),('P3 - MEDIUM','🟡'),('P4 - LOW','🟢')]):
+                pcols[i].metric(f"{icon} {p}", p_counts.get(p,0))
 
-    # ── DOWNLOAD ───────────────────────────────────────────────────────────────
+    def render_summary_table(summary_df):
+        if len(summary_df)==0:
+            st.info("No data for this period / filter combination.")
+            return
+        disp = summary_df[['PRIORITY','PLATFORM','STORE_CODE','SITE_NICK_NAME_ID','COUNTRY',
+                            'TOTAL_CHATS_7D','UNREPLIED','UNRESOLVED','ANGRY_BUYERS',
+                            'NEUTRAL_BUYERS','HAPPY_BUYERS','AVG_CSAT','TOP_ISSUES','ACTION_ITEMS']]
+        st.dataframe(style_summary(disp), use_container_width=True, height=420)
+
+    def render_detail_table(detail_df):
+        if len(detail_df)==0:
+            st.info("No detailed conversations for this period / filter combination.")
+            return
+        show_cols = ['PLATFORM','STORE_CODE','SITE_NICK_NAME_ID','BUYER_NAME','IS_UNREPLIED',
+                     'IS_UNRESOLVED','SENTIMENT','CSAT_SCORE','ISSUE_CATEGORY',
+                     'BUYER_CHAT_SUMMARY','SUGGESTED_REPLY','ACTION_ITEM']
+        avail = [c for c in show_cols if c in detail_df.columns]
+        st.dataframe(detail_df[avail], use_container_width=True, height=450)
+
+    # ── TABS ──────────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.subheader("⬇️ Download Full Report (3-Sheet Excel)")
-    with st.spinner("Building formatted Excel…"):
-        excel_bytes = build_excel(f_summary, f_trend, f_detail, TODAY.date(), SEVEN_DAYS_AGO.date())
+    tab_today, tab_7d = st.tabs([f"📅 Today  ({TODAY.date()})", f"📆 Last 7 Days  ({SEVEN_DAYS_AGO.date()} → {TODAY.date()})"])
 
-    filename = f"Chat_Analysis_{TODAY.date()}_{'_'.join(sel_platform) if len(sel_platform)<3 else 'AllPlatforms'}.xlsx"
-    st.download_button(
-        label=f"📥 Download {filename}",
-        data=excel_bytes,
-        file_name=filename,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    st.caption("3 sheets: 📊 Summary & Actions  ·  📅 7-Day Trend  ·  🔍 Detailed Analysis with suggested replies")
+    # ── TAB: TODAY ────────────────────────────────────────────────────────────
+    with tab_today:
+        if len(f_today_sum)==0:
+            st.warning(f"No conversations found for today ({TODAY.date()}) after applying filters.")
+        else:
+            st.subheader(f"⚡ Today's Snapshot — {TODAY.date()}")
+            render_metrics(f_today_detail, f_today_sum, "today")
+
+            if len(sel_platform)>1:
+                st.markdown("**Platform split**")
+                pc2 = st.columns(2)
+                for i,plat in enumerate(['Shopee','Lazada']):
+                    pc = f_today_sum[f_today_sum['PLATFORM']==plat]
+                    if len(pc)>0:
+                        pc2[i].metric(f"{'🔴' if plat=='Shopee' else '🔵'} {plat}",
+                            f"{pc['TOTAL_CHATS_7D'].sum():,} chats · {pc['UNREPLIED'].sum()} unreplied")
+
+            st.subheader("📋 Today's Priority Summary")
+            render_summary_table(f_today_sum)
+
+            st.subheader("🔍 Today's Conversations")
+            render_detail_table(f_today_detail)
+
+            st.markdown("---")
+            st.subheader("⬇️ Download Today's Report")
+            # Build a single-day trend for today's download
+            today_trend = conv_today.groupby(['PLATFORM','STORE_CODE','SITE_NICK_NAME_ID','DATE']).agg(
+                TOTAL_CHATS=('CONVERSATION_ID','count'),
+                UNREPLIED  =('IS_UNREPLIED','sum'),
+                UNRESOLVED =('IS_UNRESOLVED','sum'),
+                ANGRY      =('SENTIMENT',lambda x:(x=='ANGRY').sum()),
+                NEUTRAL    =('SENTIMENT',lambda x:(x=='NEUTRAL').sum()),
+                HAPPY      =('SENTIMENT',lambda x:(x=='HAPPY').sum()),
+                AVG_CSAT   =('CSAT_SCORE','mean'),
+                TOP_ISSUE  =('ISSUE_CATEGORY',lambda x:x.mode().iloc[0] if len(x)>0 else '-'),
+            ).reset_index()
+            today_trend['UNREPLIED_RATE_PCT'] = (today_trend['UNREPLIED']/today_trend['TOTAL_CHATS']*100).round(1)
+            today_trend['AVG_CSAT'] = today_trend['AVG_CSAT'].round(2)
+            f_today_trend = apply_filters(today_trend)
+            with st.spinner("Building Excel…"):
+                excel_today = build_excel(f_today_sum, f_today_trend, f_today_detail, TODAY.date(), TODAY.date())
+            fname_today = f"Chat_Today_{TODAY.date()}_{'_'.join(sel_platform) if len(sel_platform)<3 else 'AllPlatforms'}.xlsx"
+            st.download_button(
+                label=f"📥 Download {fname_today}",
+                data=excel_today, file_name=fname_today,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+    # ── TAB: 7-DAY VIEW ──────────────────────────────────────────────────────
+    with tab_7d:
+        st.subheader(f"📊 7-Day Overview — {SEVEN_DAYS_AGO.date()} → {TODAY.date()}")
+        render_metrics(f_detail, f_summary, "7d")
+
+        if len(sel_platform)>1:
+            st.markdown("**Platform split**")
+            pc3 = st.columns(2)
+            for i,plat in enumerate(['Shopee','Lazada']):
+                pc = f_summary[f_summary['PLATFORM']==plat]
+                if len(pc)>0:
+                    pc3[i].metric(f"{'🔴' if plat=='Shopee' else '🔵'} {plat}",
+                        f"{pc['TOTAL_CHATS_7D'].sum():,} chats · {pc['UNREPLIED'].sum()} unreplied")
+
+        st.subheader("📋 Summary & Action Items (7 Days)")
+        render_summary_table(f_summary)
+
+        st.subheader("🔍 All Conversations (7 Days)")
+        render_detail_table(f_detail)
+
+        st.markdown("---")
+        st.subheader("⬇️ Download 7-Day Full Report")
+        with st.spinner("Building formatted Excel…"):
+            excel_bytes = build_excel(f_summary, f_trend, f_detail, TODAY.date(), SEVEN_DAYS_AGO.date())
+        filename = f"Chat_7Day_{TODAY.date()}_{'_'.join(sel_platform) if len(sel_platform)<3 else 'AllPlatforms'}.xlsx"
+        st.download_button(
+            label=f"📥 Download {filename}",
+            data=excel_bytes, file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        st.caption("3 sheets: 📊 Summary & Actions  ·  📅 7-Day Trend  ·  🔍 Detailed Analysis with suggested replies")
