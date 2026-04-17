@@ -194,6 +194,33 @@ PRIORITY_MAP = {
     "Low":    ["Product Inquiry", "Promotion Issue", "Payment Issue", "Technical Issue"],
 }
 
+# ── Team Member → Store Code mapping (effective 30 March 2026) ────────────────
+TEAM_ASSIGNMENTS = {
+    "Yeria":      ["AACMH", "FFH", "IKU"],                 # GED (MY); FFH last day 1 Apr; IKU
+    "Syahira":    ["EWG", "HFC", "EWGHFC", "AAISS"],       # GED (SG); EWG/HFC (SG/MY)
+    "Keerthana":  ["AABIY", "AABIYA", "AABIW", "AAFTP"],  # GED (PH)
+    "Alfian":     ["IGZ", "AADMJ", "AAEDD", "AADWP"],     # IGZ (ID), Movado
+    "Jaye":       ["GSK", "DBC", "IEI", "FYW", "ILL"],    # GSK, DBC (SG), IEI (SG), FYW (MY), ILL
+    "Ratchakorn": ["AABWU", "AAFHU", "AAFHB"],             # Full-time covers all three stores
+}
+
+# Reverse lookup: store_code → agent name
+STORE_TO_AGENT = {
+    store.upper(): agent
+    for agent, stores in TEAM_ASSIGNMENTS.items()
+    for store in stores
+}
+
+# Shift / market label per agent
+AGENT_SHIFT = {
+    "Yeria":      "Day — GED MY",
+    "Syahira":    "Day — GED SG",
+    "Keerthana":  "Day — GED PH",
+    "Alfian":     "Day — IGZ ID",
+    "Jaye":       "Day — GSK/DBC/IEI/FYW",
+    "Ratchakorn": "Full-time (AABWU / AAFHU / AAFHB)",
+}
+
 # Stalling phrases (seller still processing — NOT resolved)
 STALLING_PATTERNS = [
     r"will (check|look|get back|follow up|investigate|verify|review|update)",
@@ -354,6 +381,113 @@ SUGGESTED_REPLIES = {
     ),
 }
 
+# Team tracking start date
+TEAM_START_DATE = pd.Timestamp("2026-03-30")
+
+# Conversion / guided-order keywords (multilingual)
+CONVERSION_KEYWORDS = [
+    "i want to buy", "i'd like to buy", "i would like to buy", "how to buy",
+    "how to order", "how do i order", "place an order", "can i order",
+    "add to cart", "how to purchase", "i want to purchase", "proceed to checkout",
+    "ready to buy", "i'll take it", "i want this", "i'll buy", "i want to get",
+    "interested to buy", "interested in buying", "want to order",
+    "อยากสั่ง", "สั่งซื้อ", "จะซื้อ", "ซื้อ", "สนใจซื้อ", "จะสั่ง",
+    "mau beli", "mau order", "mau pesan", "ingin beli", "ingin order", "cara beli",
+    "mag-order", "gusto kong bilhin", "bibilhin ko", "paano mag-order",
+]
+
+# Action steps per issue type (DKSH / GRAAS operational guide)
+ACTION_STEPS = {
+    "Refund": (
+        "1. Verify order ID and payment method in Seller Centre.\n"
+        "2. Check refund eligibility (within 15 days of purchase).\n"
+        "3. Initiate refund via platform refund portal — select 'Approved by Seller'.\n"
+        "4. Confirm refund amount matches original payment.\n"
+        "5. Notify buyer with expected timeline (3–5 business days).\n"
+        "6. Log in DKSH tracker under 'Refund Cases'."
+    ),
+    "Return": (
+        "1. Verify product condition and return reason with buyer.\n"
+        "2. Check return window (platform-specific: Lazada 7 days, Shopee 15 days).\n"
+        "3. Approve return request in Seller Centre.\n"
+        "4. Send return shipping label to buyer via platform chat.\n"
+        "5. Once item received, inspect and process refund/replacement.\n"
+        "6. Update DKSH tracker under 'Return Cases'."
+    ),
+    "Cancellation": (
+        "1. Check order status — cancellable only before 'Ready to Ship'.\n"
+        "2. Approve cancellation in Seller Centre if eligible.\n"
+        "3. If already shipped, advise buyer to reject delivery.\n"
+        "4. Refund will auto-process within 3–5 business days.\n"
+        "5. Log in DKSH tracker under 'Cancellation Cases'."
+    ),
+    "Delay": (
+        "1. Check logistics tracking in Seller Centre → Order Details.\n"
+        "2. Contact logistics provider if package stalled > 3 days.\n"
+        "3. Share tracking link with buyer immediately.\n"
+        "4. If lost in transit, file a claim with logistics partner.\n"
+        "5. Offer replacement or refund if delivery fails SLA.\n"
+        "6. Escalate to platform CS if logistics partner unresponsive."
+    ),
+    "Damaged/Wrong Item": (
+        "1. Request photo evidence from buyer (damaged/wrong item + packaging).\n"
+        "2. Log dispute in Seller Centre under 'Return & Refund'.\n"
+        "3. Approve replacement dispatch — do NOT ask buyer to return.\n"
+        "4. Arrange courier pickup of damaged item (optional).\n"
+        "5. Update DKSH tracker under 'Damaged/Wrong Item'.\n"
+        "6. Report to warehouse for quality investigation."
+    ),
+    "Missing Item": (
+        "1. Request unboxing video/photo from buyer as evidence.\n"
+        "2. Check packing list vs order items in warehouse system.\n"
+        "3. If confirmed missing, dispatch replacement within 24 hours.\n"
+        "4. If uncertain, raise internal investigation with warehouse.\n"
+        "5. Log in DKSH tracker under 'Missing Item'."
+    ),
+    "Payment Issue": (
+        "1. Verify transaction details in platform payment dashboard.\n"
+        "2. Check for double-charge or incorrect deduction.\n"
+        "3. Raise dispute ticket with platform finance team.\n"
+        "4. Provide buyer with case/ticket reference number.\n"
+        "5. Follow up within 2 business days for resolution update."
+    ),
+    "Product Inquiry": (
+        "1. Provide accurate product specs/details from official product sheet.\n"
+        "2. If stock inquiry — check live inventory in Seller Centre.\n"
+        "3. For sizing — share size guide image or chart.\n"
+        "4. For availability — advise on restock ETA if applicable.\n"
+        "5. Opportunity to upsell / cross-sell related products."
+    ),
+    "Promotion Issue": (
+        "1. Verify voucher/promo code validity in Seller Centre → Promotions.\n"
+        "2. Check eligibility criteria (min. spend, product category, date range).\n"
+        "3. If code valid but not applied — advise buyer to re-checkout.\n"
+        "4. If code expired — offer alternative discount if authorised.\n"
+        "5. Escalate to marketing team for promo setup errors."
+    ),
+    "Technical Issue": (
+        "1. Identify the platform and device buyer is using.\n"
+        "2. Advise standard troubleshooting: clear cache, update app, reinstall.\n"
+        "3. If platform-side issue — check platform status page.\n"
+        "4. Raise support ticket with platform technical team.\n"
+        "5. Keep buyer updated with ETA from platform team."
+    ),
+    "Complaint": (
+        "1. Acknowledge and empathise — do NOT be defensive.\n"
+        "2. Log complaint details in DKSH escalation tracker.\n"
+        "3. Identify root cause (product/logistics/service failure).\n"
+        "4. Offer concrete resolution: refund / replacement / discount.\n"
+        "5. Escalate to senior manager if buyer threatens churn/review.\n"
+        "6. Follow up within 4 hours with resolution update."
+    ),
+    "Other": (
+        "1. Understand buyer's concern fully before responding.\n"
+        "2. Route to appropriate team if issue is specialised.\n"
+        "3. Aim to resolve within 24 hours.\n"
+        "4. Log in DKSH tracker under 'General Enquiries'."
+    ),
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPER FUNCTIONS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -453,6 +587,92 @@ def fmt_mins(mins) -> str:
     return f"{h}h {m}m" if m else f"{h}h"
 
 
+def get_team_member(store_code: str) -> str:
+    """Return agent name for a given store code."""
+    return STORE_TO_AGENT.get(str(store_code).strip().upper(), "Unassigned")
+
+
+def detect_conversion(buyer_msgs: list) -> bool:
+    """Detect if buyer expressed intent to buy / guided order."""
+    combined = " ".join([m for m in buyer_msgs if isinstance(m, str)]).lower()
+    return any(kw.lower() in combined for kw in CONVERSION_KEYWORDS)
+
+
+def get_action_steps(issue_type: str) -> str:
+    """Return DKSH/GRAAS operational action steps for the issue type."""
+    return ACTION_STEPS.get(issue_type, ACTION_STEPS["Other"])
+
+
+def compute_wow_mom(conv_df: pd.DataFrame) -> tuple:
+    """Compute Week-on-Week and Month-on-Month performance comparison."""
+    df = conv_df.copy()
+    df = df[df["LAST_MSG_TIME"].notna()].copy()
+    if df.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    # Add period columns (use start_time for consistent datetime grouping)
+    df["WEEK"]  = df["LAST_MSG_TIME"].dt.to_period("W").apply(lambda r: r.start_time)
+    df["MONTH"] = df["LAST_MSG_TIME"].dt.to_period("M").apply(lambda r: r.start_time)
+
+    def agg_metrics(df_in, period_col):
+        agg = (
+            df_in.groupby(period_col)
+            .agg(
+                Conversations=("CONVERSATION_ID", "count"),
+                Resolved=("IS_RESOLVED", "sum"),
+                Unresolved=("IS_UNRESOLVED", "sum"),
+                Avg_CSAT=("CSAT_PROXY", "mean"),
+                Avg_CRT_mins=("AVG_CRT_MINS", "mean"),
+                Negative=("SENTIMENT", lambda x: (x == "Negative").sum()),
+                Positive=("SENTIMENT", lambda x: (x == "Positive").sum()),
+                Conversions=("IS_CONVERSION", "sum"),
+            )
+            .reset_index()
+            .sort_values(period_col)
+        )
+        agg["CRR_%"] = (agg["Resolved"] / agg["Conversations"] * 100).round(1)
+        agg["Avg_CSAT"] = agg["Avg_CSAT"].round(2)
+        agg["Avg_CRT_mins"] = agg["Avg_CRT_mins"].round(1)
+        # Deltas (vs previous period)
+        for col in ["Conversations", "Avg_CSAT", "CRR_%", "Avg_CRT_mins", "Conversions"]:
+            agg[f"Δ {col}"] = agg[col].diff().round(2)
+        return agg
+
+    wow = agg_metrics(df, "WEEK")
+    mom = agg_metrics(df, "MONTH")
+    return wow, mom
+
+
+def compute_team_performance(conv_df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate metrics per team member (from TEAM_START_DATE onwards)."""
+    df = conv_df.copy()
+    df = df[df["LAST_MSG_TIME"] >= TEAM_START_DATE].copy()
+    if df.empty or "TEAM_MEMBER" not in df.columns:
+        return pd.DataFrame()
+
+    perf = (
+        df.groupby("TEAM_MEMBER")
+        .agg(
+            Conversations=("CONVERSATION_ID", "count"),
+            Resolved=("IS_RESOLVED", "sum"),
+            Unresolved=("IS_UNRESOLVED", "sum"),
+            Avg_CSAT=("CSAT_PROXY", "mean"),
+            Avg_CRT_mins=("AVG_CRT_MINS", "mean"),
+            Positive_Sent=("SENTIMENT", lambda x: (x == "Positive").sum()),
+            Negative_Sent=("SENTIMENT", lambda x: (x == "Negative").sum()),
+            Conversions=("IS_CONVERSION", "sum"),
+            High_Priority=("PRIORITY", lambda x: (x == "High").sum()),
+        )
+        .reset_index()
+    )
+    perf["CRR_%"]    = (perf["Resolved"] / perf["Conversations"] * 100).round(1)
+    perf["Avg_CSAT"] = perf["Avg_CSAT"].round(2)
+    perf["Avg_CRT_mins"] = perf["Avg_CRT_mins"].round(1)
+    perf["Shift"]    = perf["TEAM_MEMBER"].map(AGENT_SHIFT).fillna("Day")
+    perf = perf.sort_values("Conversations", ascending=False).reset_index(drop=True)
+    return perf
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA LOADING
 # ─────────────────────────────────────────────────────────────────────────────
@@ -522,14 +742,17 @@ def analyse(df: pd.DataFrame) -> pd.DataFrame:
         # Full text for analysis (combine buyer messages)
         full_buyer_text = " ".join([m for m in buyer_msgs if isinstance(m, str)])
 
-        issue_type   = detect_issue_type(full_buyer_text)
-        sentiment    = detect_sentiment(full_buyer_text)
+        issue_type    = detect_issue_type(full_buyer_text)
+        sentiment     = detect_sentiment(full_buyer_text)
         is_unresolved = conversation_is_unresolved(seller_msgs)
-        is_resolved  = not is_unresolved
-        priority     = get_priority(issue_type)
-        csat         = compute_csat(sentiment, is_resolved)
-        summary      = generate_summary(buyer_msgs, issue_type)
-        reply        = SUGGESTED_REPLIES.get(issue_type, SUGGESTED_REPLIES["Other"])
+        is_resolved   = not is_unresolved
+        priority      = get_priority(issue_type)
+        csat          = compute_csat(sentiment, is_resolved)
+        summary       = generate_summary(buyer_msgs, issue_type)
+        reply         = SUGGESTED_REPLIES.get(issue_type, SUGGESTED_REPLIES["Other"])
+        action_steps  = get_action_steps(issue_type)
+        is_conversion = detect_conversion(buyer_msgs)
+        team_member   = get_team_member(str(meta.get("STORE_CODE", "")))
 
         # CRT: average time (mins) between consecutive buyer→seller pairs
         crt_list = []
@@ -574,6 +797,9 @@ def analyse(df: pd.DataFrame) -> pd.DataFrame:
             "AVG_CRT_MINS":      round(avg_crt, 1) if not np.isnan(avg_crt) else None,
             "BUYER_SUMMARY":     summary,
             "SUGGESTED_REPLY":   reply,
+            "ACTION_STEPS":      action_steps,
+            "IS_CONVERSION":     is_conversion,
+            "TEAM_MEMBER":       team_member,
             "IS_ANSWERED":       str(meta.get("IS_ANSWERED", "")).lower() == "true",
             "IS_READ":           str(meta.get("IS_READ", "")).lower() == "true",
         })
@@ -965,11 +1191,13 @@ def main():
         st.line_chart(daily.set_index("DATE")["Conversations"], color="#FF6B35")
 
     # ── Tabs ─────────────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "🔥 Today's Priority Chats",
         "📋 All Conversations",
         "🔴 Unresolved Chats",
         "💬 Suggested Replies",
+        "📈 WoW / MoM Performance",
+        "👥 Team Performance",
     ])
 
     display_cols = [
@@ -1076,6 +1304,186 @@ def main():
             <div class="reply-label">Suggested Reply</div>
             <div class="reply-box">{row['SUGGESTED_REPLY']}</div>
             """, unsafe_allow_html=True)
+
+    # ── Tab 5 : WoW / MoM Performance ────────────────────────────────────────
+    with tab5:
+        st.markdown("### 📈 Week-on-Week & Month-on-Month Performance")
+        wow_df, mom_df = compute_wow_mom(conv_filtered)
+
+        wow_tab, mom_tab = st.tabs(["📅 Week-on-Week", "🗓️ Month-on-Month"])
+
+        with wow_tab:
+            if wow_df.empty:
+                st.info("Not enough data for weekly comparison.")
+            else:
+                st.markdown("**Weekly Conversation Trend**")
+                wow_chart = wow_df.set_index("WEEK")[["Conversations"]].copy()
+                st.bar_chart(wow_chart, color="#00C4B4")
+
+                st.markdown("**Weekly Metrics Table**")
+                disp_wow = wow_df.copy()
+                disp_wow["WEEK"] = disp_wow["WEEK"].dt.strftime("%d %b %Y")
+                disp_wow["Avg_CRT_mins"] = disp_wow["Avg_CRT_mins"].apply(
+                    lambda x: fmt_mins(x) if pd.notna(x) else "—"
+                )
+                st.dataframe(
+                    disp_wow[["WEEK","Conversations","CRR_%","Avg_CSAT",
+                               "Avg_CRT_mins","Conversions",
+                               "Δ Conversations","Δ CRR_%","Δ Avg_CSAT"]].reset_index(drop=True),
+                    use_container_width=True,
+                    column_config={
+                        "WEEK":           st.column_config.TextColumn("Week Starting"),
+                        "CRR_%":          st.column_config.NumberColumn("CRR %", format="%.1f%%"),
+                        "Avg_CSAT":       st.column_config.NumberColumn("CSAT", format="%.2f"),
+                        "Conversions":    st.column_config.NumberColumn("Conversions"),
+                        "Δ Conversations":st.column_config.NumberColumn("Δ Conv", format="%+.0f"),
+                        "Δ CRR_%":        st.column_config.NumberColumn("Δ CRR%", format="%+.1f"),
+                        "Δ Avg_CSAT":     st.column_config.NumberColumn("Δ CSAT", format="%+.2f"),
+                    },
+                )
+
+        with mom_tab:
+            if mom_df.empty:
+                st.info("Not enough data for monthly comparison.")
+            else:
+                st.markdown("**Monthly Conversation Trend**")
+                mom_chart = mom_df.set_index("MONTH")[["Conversations"]].copy()
+                st.bar_chart(mom_chart, color="#FF6B35")
+
+                st.markdown("**Monthly Metrics Table**")
+                disp_mom = mom_df.copy()
+                disp_mom["MONTH"] = disp_mom["MONTH"].dt.strftime("%b %Y")
+                disp_mom["Avg_CRT_mins"] = disp_mom["Avg_CRT_mins"].apply(
+                    lambda x: fmt_mins(x) if pd.notna(x) else "—"
+                )
+                st.dataframe(
+                    disp_mom[["MONTH","Conversations","CRR_%","Avg_CSAT",
+                               "Avg_CRT_mins","Conversions",
+                               "Δ Conversations","Δ CRR_%","Δ Avg_CSAT"]].reset_index(drop=True),
+                    use_container_width=True,
+                    column_config={
+                        "MONTH":          st.column_config.TextColumn("Month"),
+                        "CRR_%":          st.column_config.NumberColumn("CRR %", format="%.1f%%"),
+                        "Avg_CSAT":       st.column_config.NumberColumn("CSAT", format="%.2f"),
+                        "Conversions":    st.column_config.NumberColumn("Conversions"),
+                        "Δ Conversations":st.column_config.NumberColumn("Δ Conv", format="%+.0f"),
+                        "Δ CRR_%":        st.column_config.NumberColumn("Δ CRR%", format="%+.1f"),
+                        "Δ Avg_CSAT":     st.column_config.NumberColumn("Δ CSAT", format="%+.2f"),
+                    },
+                )
+
+    # ── Tab 6 : Team Member Performance ──────────────────────────────────────
+    with tab6:
+        st.markdown("### 👥 Team Member Performance")
+        st.caption(
+            f"Data from **{TEAM_START_DATE.strftime('%d %b %Y')}** onwards · "
+            f"Store → Agent mapping as configured in constants"
+        )
+
+        team_perf = compute_team_performance(conv_filtered)
+
+        if team_perf.empty:
+            st.info(
+                "No team performance data available. "
+                "This may be because no conversations fall within the tracking period "
+                f"(from {TEAM_START_DATE.strftime('%d %b %Y')}) or store codes don't match assignments."
+            )
+        else:
+            # ── KPI scorecards per agent ──────────────────────────────────────
+            agents = team_perf["TEAM_MEMBER"].tolist()
+            agents_per_row = 3
+            for i in range(0, len(agents), agents_per_row):
+                cols = st.columns(agents_per_row)
+                for j, agent in enumerate(agents[i:i+agents_per_row]):
+                    row_a = team_perf[team_perf["TEAM_MEMBER"] == agent].iloc[0]
+                    with cols[j]:
+                        st.markdown(
+                            f"""
+                            <div style="background:#1B2A4A;border-radius:10px;padding:14px;color:white;margin-bottom:8px;">
+                              <div style="font-size:16px;font-weight:700;color:#00C4B4;">👤 {agent}</div>
+                              <div style="font-size:11px;color:#aaa;margin-bottom:8px;">{row_a['Shift']}</div>
+                              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                <div><span style="font-size:20px;font-weight:700">{int(row_a['Conversations'])}</span><br><span style="font-size:11px;color:#ccc;">Conversations</span></div>
+                                <div><span style="font-size:20px;font-weight:700">{row_a['CRR_%']:.1f}%</span><br><span style="font-size:11px;color:#ccc;">CRR</span></div>
+                                <div><span style="font-size:20px;font-weight:700">{row_a['Avg_CSAT']:.2f}</span><br><span style="font-size:11px;color:#ccc;">CSAT</span></div>
+                                <div><span style="font-size:20px;font-weight:700">{int(row_a['Avg_CRT_mins']) if pd.notna(row_a['Avg_CRT_mins']) else '—'}m</span><br><span style="font-size:11px;color:#ccc;">Avg CRT</span></div>
+                                <div><span style="font-size:20px;font-weight:700;color:#FF6B35">{int(row_a['Conversions'])}</span><br><span style="font-size:11px;color:#ccc;">Conversions</span></div>
+                                <div><span style="font-size:20px;font-weight:700;color:#f87171">{int(row_a['High_Priority'])}</span><br><span style="font-size:11px;color:#ccc;">High Priority</span></div>
+                              </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+            st.markdown("---")
+
+            # ── Summary table ─────────────────────────────────────────────────
+            st.markdown("**Team Summary Table**")
+            summary_cols = [
+                "TEAM_MEMBER", "Shift", "Conversations", "Resolved", "Unresolved",
+                "CRR_%", "Avg_CSAT", "Avg_CRT_mins", "Positive_Sent",
+                "Negative_Sent", "Conversions", "High_Priority",
+            ]
+            st.dataframe(
+                team_perf[summary_cols].reset_index(drop=True),
+                use_container_width=True,
+                column_config={
+                    "TEAM_MEMBER":   st.column_config.TextColumn("Agent"),
+                    "Shift":         st.column_config.TextColumn("Shift / Market"),
+                    "Conversations": st.column_config.NumberColumn("Conv"),
+                    "Resolved":      st.column_config.NumberColumn("Resolved"),
+                    "Unresolved":    st.column_config.NumberColumn("Unresolved"),
+                    "CRR_%":         st.column_config.NumberColumn("CRR %", format="%.1f%%"),
+                    "Avg_CSAT":      st.column_config.NumberColumn("CSAT", format="%.2f"),
+                    "Avg_CRT_mins":  st.column_config.NumberColumn("CRT (min)", format="%.0f"),
+                    "Positive_Sent": st.column_config.NumberColumn("Positive"),
+                    "Negative_Sent": st.column_config.NumberColumn("Negative"),
+                    "Conversions":   st.column_config.NumberColumn("Conversions"),
+                    "High_Priority": st.column_config.NumberColumn("High Pri."),
+                },
+            )
+
+            # ── Per-agent drilldown ───────────────────────────────────────────
+            st.markdown("---")
+            st.markdown("**Drill Down by Agent**")
+            agent_sel = st.selectbox("Select Agent", ["(All)"] + agents)
+            if agent_sel == "(All)":
+                drilldown_df = conv_filtered[conv_filtered["LAST_MSG_TIME"] >= TEAM_START_DATE]
+            else:
+                drilldown_df = conv_filtered[
+                    (conv_filtered["TEAM_MEMBER"] == agent_sel) &
+                    (conv_filtered["LAST_MSG_TIME"] >= TEAM_START_DATE)
+                ]
+
+            drill_cols = [
+                "CONVERSATION_ID", "STORE_CODE", "SITE_NICK_NAME_ID", "COUNTRY_CODE",
+                "BUYER_NAME", "LAST_MSG_TIME", "ISSUE_TYPE", "PRIORITY",
+                "SENTIMENT", "IS_RESOLVED", "CSAT_PROXY", "AVG_CRT_MINS",
+                "IS_CONVERSION", "TEAM_MEMBER",
+            ]
+            available_drill = [c for c in drill_cols if c in drilldown_df.columns]
+            st.dataframe(
+                drilldown_df[available_drill].sort_values("LAST_MSG_TIME", ascending=False).reset_index(drop=True),
+                use_container_width=True,
+                height=400,
+                column_config={
+                    "CSAT_PROXY":    st.column_config.NumberColumn("CSAT", format="%.1f"),
+                    "AVG_CRT_MINS":  st.column_config.NumberColumn("CRT(m)", format="%.0f"),
+                    "IS_RESOLVED":   st.column_config.CheckboxColumn("Resolved?"),
+                    "IS_CONVERSION": st.column_config.CheckboxColumn("Conversion?"),
+                },
+            )
+
+            # ── Store assignments reference ───────────────────────────────────
+            with st.expander("📋 Store → Agent Assignment Reference"):
+                assign_rows = []
+                for agent_name, stores in TEAM_ASSIGNMENTS.items():
+                    assign_rows.append({
+                        "Agent":           agent_name,
+                        "Shift":           AGENT_SHIFT.get(agent_name, "Day"),
+                        "Assigned Stores": ", ".join(stores),
+                    })
+                st.dataframe(pd.DataFrame(assign_rows), use_container_width=True, hide_index=True)
 
     # ── Issue Breakdown Table ─────────────────────────────────────────────────
     st.markdown('<div class="section-title">📂 Issue Type Breakdown</div>', unsafe_allow_html=True)
