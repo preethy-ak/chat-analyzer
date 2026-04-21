@@ -747,7 +747,7 @@ def load_data(file_bytes: bytes) -> pd.DataFrame:
     combined["MESSAGE_TIME"] = pd.to_datetime(combined["MESSAGE_TIME"], errors="coerce")
 
     # Normalise columns
-    for col in ["STORE_CODE", "SITE_NICK_NAME_ID", "COUNTRY_CODE",
+    for col in ["STORE_CODE", "SITE_NICK_NAME_ID", "CHANNEL_NAME", "COUNTRY_CODE",
                 "CONVERSATION_ID", "BUYER_NAME", "MESSAGE_PARSED",
                 "MESSAGE_TYPE", "SENDER"]:
         if col in combined.columns:
@@ -793,7 +793,7 @@ def analyse(df: pd.DataFrame) -> pd.DataFrame:
     sentiment_map = buyer_text_per_conv.apply(detect_sentiment)
 
     # ── Metadata per conversation (first row) ─────────────────────────────────
-    meta_cols = ["PLATFORM", "STORE_CODE", "SITE_NICK_NAME_ID",
+    meta_cols = ["PLATFORM", "STORE_CODE", "SITE_NICK_NAME_ID", "CHANNEL_NAME",
                  "COUNTRY_CODE", "BUYER_NAME", "BUYER_ID", "IS_ANSWERED", "IS_READ"]
     meta_cols = [c for c in meta_cols if c in df_sorted.columns]
     meta_df = df_sorted.groupby("CONVERSATION_ID")[meta_cols].first()
@@ -858,6 +858,7 @@ def analyse(df: pd.DataFrame) -> pd.DataFrame:
             "PLATFORM":          _get("PLATFORM"),
             "STORE_CODE":        _get("STORE_CODE"),
             "SITE_NICK_NAME_ID": _get("SITE_NICK_NAME_ID"),
+            "CHANNEL_NAME":      _get("CHANNEL_NAME"),
             "COUNTRY_CODE":      _get("COUNTRY_CODE"),
             "BUYER_NAME":        _get("BUYER_NAME"),
             "BUYER_ID":          _get("BUYER_ID"),
@@ -886,7 +887,7 @@ def analyse(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── Memory optimisation: categorical dtypes for low-cardinality columns ───
     for col in ["PLATFORM", "ISSUE_TYPE", "PRIORITY", "SENTIMENT",
-                "STORE_CODE", "COUNTRY_CODE", "TEAM_MEMBER", "SITE_NICK_NAME_ID"]:
+                "STORE_CODE", "CHANNEL_NAME", "COUNTRY_CODE", "TEAM_MEMBER", "SITE_NICK_NAME_ID"]:
         if col in result.columns:
             result[col] = result[col].astype("category")
 
@@ -991,7 +992,8 @@ def build_excel(conv_df: pd.DataFrame, today_str: str) -> bytes:
 
         # ── Sheet 2 : Today Priority Chats ───────────────────────────────────
         priority_cols = [c for c in [
-            "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "TEAM_MEMBER", "BUYER_NAME",
+            "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "CHANNEL_NAME",
+            "SITE_NICK_NAME_ID", "COUNTRY_CODE", "TEAM_MEMBER", "BUYER_NAME",
             "ISSUE_TYPE", "PRIORITY", "SENTIMENT", "IS_UNRESOLVED",
             "CSAT_PROXY", "AVG_CRT_MINS", "IS_CONVERSION", "BUYER_SUMMARY", "SUGGESTED_REPLY",
         ] if c in df.columns]
@@ -1008,8 +1010,9 @@ def build_excel(conv_df: pd.DataFrame, today_str: str) -> bytes:
 
         # ── Sheet 3 : Detailed Chat Analysis ─────────────────────────────────
         detail_cols = [c for c in [
-            "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "SITE_NICK_NAME_ID",
-            "COUNTRY_CODE", "TEAM_MEMBER", "BUYER_NAME", "FIRST_MSG_TIME", "LAST_MSG_TIME",
+            "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "CHANNEL_NAME",
+            "SITE_NICK_NAME_ID", "COUNTRY_CODE", "TEAM_MEMBER", "BUYER_NAME",
+            "FIRST_MSG_TIME", "LAST_MSG_TIME",
             "MSG_COUNT", "ISSUE_TYPE", "PRIORITY", "SENTIMENT",
             "IS_RESOLVED", "IS_UNRESOLVED", "CSAT_PROXY", "AVG_CRT_MINS",
             "IS_CONVERSION", "BUYER_SUMMARY", "SUGGESTED_REPLY",
@@ -1165,6 +1168,13 @@ def apply_filters(conv_df: pd.DataFrame, today_ts: pd.Timestamp) -> pd.DataFrame
     all_countries = sorted(src["COUNTRY_CODE"].dropna().unique().tolist())
     sel_countries = st.sidebar.multiselect("🌍 Country", all_countries)
 
+    # ── Channel Name — options from full source ───────────────────────────────
+    if "CHANNEL_NAME" in src.columns:
+        all_channels = sorted(src["CHANNEL_NAME"].dropna().replace("", pd.NA).dropna().unique().tolist())
+        sel_channels = st.sidebar.multiselect("📡 Channel Name", all_channels)
+    else:
+        sel_channels = []
+
     # ── Buyer Name free-text ──────────────────────────────────────────────────
     buyer_search = st.sidebar.text_input("🔍 Buyer Name")
 
@@ -1207,6 +1217,9 @@ def apply_filters(conv_df: pd.DataFrame, today_ts: pd.Timestamp) -> pd.DataFrame
 
     if sel_countries:
         result = result[result["COUNTRY_CODE"].isin(sel_countries)]
+
+    if sel_channels and "CHANNEL_NAME" in result.columns:
+        result = result[result["CHANNEL_NAME"].isin(sel_channels)]
 
     if buyer_search:
         result = result[result["BUYER_NAME"].str.contains(buyer_search, case=False, na=False)]
@@ -1324,10 +1337,13 @@ def main():
     ])
 
     display_cols = [
-        "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "BUYER_NAME",
+        "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "CHANNEL_NAME",
+        "SITE_NICK_NAME_ID", "COUNTRY_CODE", "BUYER_NAME",
         "ISSUE_TYPE", "PRIORITY", "SENTIMENT", "IS_UNRESOLVED",
         "CSAT_PROXY", "AVG_CRT_MINS", "BUYER_SUMMARY",
     ]
+    # Only include cols that actually exist in the dataframe
+    display_cols = [c for c in display_cols if c in conv_filtered.columns]
 
     with tab1:
         # Use normalize() for date comparison — pandas 3.0 safe
@@ -1609,7 +1625,8 @@ def main():
                 st.markdown("**All Conversations — Others**")
 
             drill_cols = [
-                "CONVERSATION_ID", "STORE_CODE", "SITE_NICK_NAME_ID", "COUNTRY_CODE",
+                "CONVERSATION_ID", "STORE_CODE", "CHANNEL_NAME",
+                "SITE_NICK_NAME_ID", "COUNTRY_CODE",
                 "BUYER_NAME", "LAST_MSG_TIME", "ISSUE_TYPE", "PRIORITY",
                 "SENTIMENT", "IS_RESOLVED", "CSAT_PROXY", "AVG_CRT_MINS",
                 "IS_CONVERSION", "TEAM_MEMBER",
@@ -1641,10 +1658,15 @@ def main():
                     others_rows = []
                     for sc in others_stores:
                         sc_df = conv_filtered[conv_filtered["STORE_CODE"] == sc]
-                        # Most common site nickname & country for this store
+                        # Most common site nickname, channel & country for this store
                         site = (
                             sc_df["SITE_NICK_NAME_ID"].mode().iloc[0]
                             if "SITE_NICK_NAME_ID" in sc_df.columns and not sc_df["SITE_NICK_NAME_ID"].dropna().empty
+                            else "—"
+                        )
+                        channel = (
+                            sc_df["CHANNEL_NAME"].mode().iloc[0]
+                            if "CHANNEL_NAME" in sc_df.columns and not sc_df["CHANNEL_NAME"].replace("", pd.NA).dropna().empty
                             else "—"
                         )
                         country = (
@@ -1659,6 +1681,7 @@ def main():
                         )
                         others_rows.append({
                             "Store Code":      sc,
+                            "Channel Name":    channel,
                             "Site Nickname":   site,
                             "Platform":        platform,
                             "Country":         country,
