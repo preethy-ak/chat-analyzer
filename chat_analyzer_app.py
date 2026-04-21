@@ -10,7 +10,7 @@ Deps: pip install streamlit pandas openpyxl xlsxwriter
 import streamlit as st
 import pandas as pd
 import numpy as np
-import re, io, warnings
+import re, io, warnings, gc
 from datetime import datetime, timedelta
 
 warnings.filterwarnings("ignore")
@@ -89,11 +89,44 @@ html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
 .sent-neg { color:#C0392B; font-weight:600; }
 
 /* ── Sidebar ── */
-.css-1d391kg { background: #1B2A4A !important; }
 section[data-testid="stSidebar"] { background: #1B2A4A !important; }
-section[data-testid="stSidebar"] * { color: #D4E6F1 !important; }
-section[data-testid="stSidebar"] .stSelectbox label,
-section[data-testid="stSidebar"] .stMultiSelect label { color: #A8C0D6 !important; font-size: 0.82rem; }
+section[data-testid="stSidebar"] .stMarkdown h2,
+section[data-testid="stSidebar"] .stMarkdown h3 {
+    color: #00C4B4 !important; font-size: 1rem !important; font-weight: 700 !important;
+}
+section[data-testid="stSidebar"] .stMarkdown p,
+section[data-testid="stSidebar"] .stMarkdown span { color: #FFFFFF !important; }
+/* Filter labels — bright white */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] .stSelectbox > label,
+section[data-testid="stSidebar"] .stMultiSelect > label,
+section[data-testid="stSidebar"] .stDateInput > label,
+section[data-testid="stSidebar"] .stTextInput > label {
+    color: #FFFFFF !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px !important;
+}
+/* Input boxes — white background for contrast */
+section[data-testid="stSidebar"] .stSelectbox > div > div,
+section[data-testid="stSidebar"] .stMultiSelect > div > div,
+section[data-testid="stSidebar"] .stDateInput > div > div > input,
+section[data-testid="stSidebar"] .stTextInput > div > div > input {
+    background: #FFFFFF !important;
+    color: #1B2A4A !important;
+    border-radius: 6px !important;
+    border: 1.5px solid #00C4B4 !important;
+}
+section[data-testid="stSidebar"] .stSelectbox svg,
+section[data-testid="stSidebar"] .stMultiSelect svg { color: #1B2A4A !important; fill: #1B2A4A !important; }
+/* Multiselect tag pills */
+section[data-testid="stSidebar"] .stMultiSelect span[data-baseweb="tag"] {
+    background: #00C4B4 !important; color: #fff !important;
+}
+/* Sidebar divider */
+section[data-testid="stSidebar"] hr { border-color: #2E4A6A !important; }
+/* Result count text */
+section[data-testid="stSidebar"] strong { color: #00C4B4 !important; }
 
 /* ── Tabs ── */
 .stTabs [data-baseweb="tab-list"] { background: #fff; border-radius:8px; padding:4px; gap:4px; }
@@ -195,13 +228,18 @@ PRIORITY_MAP = {
 }
 
 # ── Team Member → Store Code mapping (effective 30 March 2026) ────────────────
+# GED = General Ecommerce Department (market label, not a store code)
 TEAM_ASSIGNMENTS = {
-    "Yeria":      ["AACMH", "FFH", "IKU"],                 # GED (MY); FFH last day 1 Apr; IKU
-    "Syahira":    ["EWG", "HFC", "EWGHFC", "AAISS"],       # GED (SG); EWG/HFC (SG/MY)
-    "Keerthana":  ["AABIY", "AABIYA", "AABIW", "AAFTP"],  # GED (PH)
-    "Alfian":     ["IGZ", "AADMJ", "AAEDD", "AADWP"],     # IGZ (ID), Movado
-    "Jaye":       ["GSK", "DBC", "IEI", "FYW", "ILL"],    # GSK, DBC (SG), IEI (SG), FYW (MY), ILL
-    "Ratchakorn": ["AABWU", "AAFHU", "AAFHB"],             # Full-time covers all three stores
+    "Yeria":      ["AACMH", "FFH", "IKU",
+                   "GED MY", "GEDMY", "GED_MY"],       # GED MY · all format variants
+    "Syahira":    ["EWG", "HFC", "AAISS",
+                   "GED SG", "GEDSG", "GED_SG"],       # GED SG · all format variants
+    "Keerthana":  ["AABIY", "AABIW", "AAFTP",
+                   "GED PH", "GEDPH", "GED_PH"],       # GED PH · all format variants
+    "Alfian":     ["IGZ", "AADMJ", "AAEDD", "AADWP",
+                   "IGZ ID", "IGZID", "IGZ_ID"],       # IGZ ID · all format variants
+    "Jaye":       ["GSK", "DBC", "IEI", "FYW", "ILL"],
+    "Ratchakorn": ["AABWU", "AAFHU", "AAFHB"],        # Full-time
 }
 
 # Reverse lookup: store_code → agent name
@@ -213,12 +251,12 @@ STORE_TO_AGENT = {
 
 # Shift / market label per agent
 AGENT_SHIFT = {
-    "Yeria":      "Day — GED MY",
-    "Syahira":    "Day — GED SG",
-    "Keerthana":  "Day — GED PH",
-    "Alfian":     "Day — IGZ ID",
-    "Jaye":       "Day — GSK/DBC/IEI/FYW",
-    "Ratchakorn": "Full-time (AABWU / AAFHU / AAFHB)",
+    "Yeria":      "GED MY · AACMH / FFH / IKU",
+    "Syahira":    "GED SG · EWG / HFC / AAISS",
+    "Keerthana":  "GED PH · AABIY / AABIW / AAFTP",
+    "Alfian":     "IGZ ID · AADMJ / AAEDD / AADWP",
+    "Jaye":       "GSK / DBC / IEI / FYW / ILL",
+    "Ratchakorn": "Full-time · AABWU / AAFHU / AAFHB",
 }
 
 # Stalling phrases (seller still processing — NOT resolved)
@@ -588,8 +626,14 @@ def fmt_mins(mins) -> str:
 
 
 def get_team_member(store_code: str) -> str:
-    """Return agent name for a given store code."""
-    return STORE_TO_AGENT.get(str(store_code).strip().upper(), "Unassigned")
+    """Return agent name for a given store code.
+    Unknown stores are grouped as 'Others' so they aggregate together
+    in Team Performance. Individual store codes remain visible via STORE_CODE column.
+    """
+    code = str(store_code).strip().upper()
+    if not code:
+        return "Others"
+    return STORE_TO_AGENT.get(code, "Others")
 
 
 def detect_conversion(buyer_msgs: list) -> bool:
@@ -724,70 +768,104 @@ def load_data(file_bytes: bytes) -> pd.DataFrame:
 # ANALYSIS ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(show_spinner=False, max_entries=1)
 def analyse(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Group by CONVERSATION_ID, compute per-conversation metrics.
-    Returns one row per conversation.
+    Analyse all conversations. Cached (max 1 entry) so re-renders never re-process.
+    Memory optimised: categorical dtypes, truncated text, no large text duplicated per row.
     """
-    rows = []
-
-    # Sort messages chronologically within each conversation
+    df = df.copy()
+    df["_sender_lower"] = df["SENDER"].str.lower().fillna("")
     df_sorted = df.sort_values(["CONVERSATION_ID", "MESSAGE_TIME"])
 
+    buyer_mask  = df_sorted["_sender_lower"] == "buyer"
+    seller_mask = df_sorted["_sender_lower"] == "seller"
+
+    # ── Vectorize: aggregate buyer text per conversation ──────────────────────
+    buyer_text_per_conv = (
+        df_sorted[buyer_mask]
+        .groupby("CONVERSATION_ID")["MESSAGE_PARSED"]
+        .apply(lambda msgs: " ".join(m for m in msgs if isinstance(m, str)))
+    )
+
+    # ── Vectorize: sentiment & issue classification ───────────────────────────
+    issue_map     = buyer_text_per_conv.apply(detect_issue_type)
+    sentiment_map = buyer_text_per_conv.apply(detect_sentiment)
+
+    # ── Metadata per conversation (first row) ─────────────────────────────────
+    meta_cols = ["PLATFORM", "STORE_CODE", "SITE_NICK_NAME_ID",
+                 "COUNTRY_CODE", "BUYER_NAME", "BUYER_ID", "IS_ANSWERED", "IS_READ"]
+    meta_cols = [c for c in meta_cols if c in df_sorted.columns]
+    meta_df = df_sorted.groupby("CONVERSATION_ID")[meta_cols].first()
+
+    # ── Time bounds ───────────────────────────────────────────────────────────
+    time_df = df_sorted.groupby("CONVERSATION_ID")["MESSAGE_TIME"].agg(
+        FIRST_MSG_TIME="min", LAST_MSG_TIME="max"
+    )
+
+    # ── Message counts ────────────────────────────────────────────────────────
+    total_msgs  = df_sorted.groupby("CONVERSATION_ID").size().rename("MSG_COUNT")
+    buyer_msgs_count  = df_sorted[buyer_mask].groupby("CONVERSATION_ID").size().rename("BUYER_MSG_COUNT")
+    seller_msgs_count = df_sorted[seller_mask].groupby("CONVERSATION_ID").size().rename("SELLER_MSG_COUNT")
+
+    # ── Seller message lists for unresolved detection ─────────────────────────
+    seller_msgs_per_conv = (
+        df_sorted[seller_mask]
+        .groupby("CONVERSATION_ID")["MESSAGE_PARSED"]
+        .apply(list)
+    )
+    buyer_msgs_per_conv = (
+        df_sorted[buyer_mask]
+        .groupby("CONVERSATION_ID")["MESSAGE_PARSED"]
+        .apply(list)
+    )
+
+    # ── Build result row by row (only CRT needs sequential access) ────────────
+    rows = []
     for conv_id, grp in df_sorted.groupby("CONVERSATION_ID", sort=False):
-        buyer_msgs   = grp[grp["SENDER"].str.lower() == "buyer"]["MESSAGE_PARSED"].tolist()
-        seller_msgs  = grp[grp["SENDER"].str.lower() == "seller"]["MESSAGE_PARSED"].tolist()
-        all_msgs     = grp["MESSAGE_PARSED"].tolist()
+        issue_type  = issue_map.get(conv_id, "Other")
+        sentiment   = sentiment_map.get(conv_id, "Neutral")
+        b_msgs      = buyer_msgs_per_conv.get(conv_id, [])
+        s_msgs      = seller_msgs_per_conv.get(conv_id, [])
+        meta        = meta_df.loc[conv_id] if conv_id in meta_df.index else {}
 
-        # Full text for analysis (combine buyer messages)
-        full_buyer_text = " ".join([m for m in buyer_msgs if isinstance(m, str)])
-
-        issue_type    = detect_issue_type(full_buyer_text)
-        sentiment     = detect_sentiment(full_buyer_text)
-        is_unresolved = conversation_is_unresolved(seller_msgs)
+        is_unresolved = conversation_is_unresolved(s_msgs)
         is_resolved   = not is_unresolved
         priority      = get_priority(issue_type)
         csat          = compute_csat(sentiment, is_resolved)
-        summary       = generate_summary(buyer_msgs, issue_type)
-        reply         = SUGGESTED_REPLIES.get(issue_type, SUGGESTED_REPLIES["Other"])
-        action_steps  = get_action_steps(issue_type)
-        is_conversion = detect_conversion(buyer_msgs)
-        team_member   = get_team_member(str(meta.get("STORE_CODE", "")))
 
-        # CRT: average time (mins) between consecutive buyer→seller pairs
+        # CRT: time between each buyer→seller pair
         crt_list = []
-        grp_rows = grp.sort_values("MESSAGE_TIME").to_dict("records")
         last_buyer_time = None
-        for r in grp_rows:
-            if r["SENDER"].lower() == "buyer":
-                last_buyer_time = r["MESSAGE_TIME"]
-            elif r["SENDER"].lower() == "seller" and last_buyer_time is not None:
-                delta = (r["MESSAGE_TIME"] - last_buyer_time).total_seconds() / 60
-                if 0 <= delta <= 1440:   # ignore gaps > 24h (likely new day)
+        for r in grp[["_sender_lower", "MESSAGE_TIME"]].itertuples(index=False):
+            if r._sender_lower == "buyer":
+                last_buyer_time = r.MESSAGE_TIME
+            elif r._sender_lower == "seller" and last_buyer_time is not None:
+                delta = (r.MESSAGE_TIME - last_buyer_time).total_seconds() / 60
+                if 0 <= delta <= 1440:
                     crt_list.append(delta)
                 last_buyer_time = None
+        avg_crt = float(np.mean(crt_list)) if crt_list else np.nan
 
-        avg_crt = np.mean(crt_list) if crt_list else np.nan
+        def _get(field, default=""):
+            try:
+                return meta[field] if hasattr(meta, "__getitem__") else getattr(meta, field, default)
+            except Exception:
+                return default
 
-        # Last message time and date
-        last_msg_time = grp["MESSAGE_TIME"].max()
-        first_msg_time = grp["MESSAGE_TIME"].min()
-
-        # Metadata from first row of the group
-        meta = grp.iloc[0]
         rows.append({
             "CONVERSATION_ID":   conv_id,
-            "PLATFORM":          meta.get("PLATFORM", ""),
-            "STORE_CODE":        meta.get("STORE_CODE", ""),
-            "SITE_NICK_NAME_ID": meta.get("SITE_NICK_NAME_ID", ""),
-            "COUNTRY_CODE":      meta.get("COUNTRY_CODE", ""),
-            "BUYER_NAME":        meta.get("BUYER_NAME", ""),
-            "BUYER_ID":          meta.get("BUYER_ID", ""),
-            "FIRST_MSG_TIME":    first_msg_time,
-            "LAST_MSG_TIME":     last_msg_time,
-            "MSG_COUNT":         len(grp),
-            "BUYER_MSG_COUNT":   len(buyer_msgs),
-            "SELLER_MSG_COUNT":  len(seller_msgs),
+            "PLATFORM":          _get("PLATFORM"),
+            "STORE_CODE":        _get("STORE_CODE"),
+            "SITE_NICK_NAME_ID": _get("SITE_NICK_NAME_ID"),
+            "COUNTRY_CODE":      _get("COUNTRY_CODE"),
+            "BUYER_NAME":        _get("BUYER_NAME"),
+            "BUYER_ID":          _get("BUYER_ID"),
+            "FIRST_MSG_TIME":    time_df.loc[conv_id, "FIRST_MSG_TIME"] if conv_id in time_df.index else pd.NaT,
+            "LAST_MSG_TIME":     time_df.loc[conv_id, "LAST_MSG_TIME"]  if conv_id in time_df.index else pd.NaT,
+            "MSG_COUNT":         int(total_msgs.get(conv_id, 0)),
+            "BUYER_MSG_COUNT":   int(buyer_msgs_count.get(conv_id, 0)),
+            "SELLER_MSG_COUNT":  int(seller_msgs_count.get(conv_id, 0)),
             "ISSUE_TYPE":        issue_type,
             "PRIORITY":          priority,
             "SENTIMENT":         sentiment,
@@ -795,16 +873,34 @@ def analyse(df: pd.DataFrame) -> pd.DataFrame:
             "IS_RESOLVED":       is_resolved,
             "CSAT_PROXY":        round(csat, 1),
             "AVG_CRT_MINS":      round(avg_crt, 1) if not np.isnan(avg_crt) else None,
-            "BUYER_SUMMARY":     summary,
-            "SUGGESTED_REPLY":   reply,
-            "ACTION_STEPS":      action_steps,
-            "IS_CONVERSION":     is_conversion,
-            "TEAM_MEMBER":       team_member,
-            "IS_ANSWERED":       str(meta.get("IS_ANSWERED", "")).lower() == "true",
-            "IS_READ":           str(meta.get("IS_READ", "")).lower() == "true",
+            "BUYER_SUMMARY":     generate_summary(b_msgs, issue_type),
+            "SUGGESTED_REPLY":   SUGGESTED_REPLIES.get(issue_type, SUGGESTED_REPLIES["Other"]),
+            "ACTION_STEPS":      get_action_steps(issue_type),
+            "IS_CONVERSION":     detect_conversion(b_msgs),
+            "TEAM_MEMBER":       get_team_member(_get("STORE_CODE")),
+            "IS_ANSWERED":       str(_get("IS_ANSWERED")).lower() == "true",
+            "IS_READ":           str(_get("IS_READ")).lower() == "true",
         })
 
-    return pd.DataFrame(rows)
+    result = pd.DataFrame(rows)
+
+    # ── Memory optimisation: categorical dtypes for low-cardinality columns ───
+    for col in ["PLATFORM", "ISSUE_TYPE", "PRIORITY", "SENTIMENT",
+                "STORE_CODE", "COUNTRY_CODE", "TEAM_MEMBER", "SITE_NICK_NAME_ID"]:
+        if col in result.columns:
+            result[col] = result[col].astype("category")
+
+    # Truncate long text columns to reduce RAM (full text not needed in-memory)
+    for col in ["BUYER_SUMMARY"]:
+        if col in result.columns:
+            result[col] = result[col].str[:300]
+
+    # Drop the heavy reply/action columns — looked up on-the-fly during display
+    # They are re-attached only when building Excel export
+    result.drop(columns=["SUGGESTED_REPLY", "ACTION_STEPS"], errors="ignore", inplace=True)
+
+    gc.collect()
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -812,7 +908,15 @@ def analyse(df: pd.DataFrame) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_excel(conv_df: pd.DataFrame, today_str: str) -> bytes:
-    """Build 4-sheet Excel output."""
+    """Build 4-sheet Excel output. Re-attaches reply/action columns on the fly."""
+    # Re-attach heavy text columns (dropped from memory after analyse())
+    df = conv_df.copy()
+    if "SUGGESTED_REPLY" not in df.columns and "ISSUE_TYPE" in df.columns:
+        df["SUGGESTED_REPLY"] = df["ISSUE_TYPE"].astype(str).map(
+            lambda it: SUGGESTED_REPLIES.get(it, SUGGESTED_REPLIES["Other"])
+        )
+    if "ACTION_STEPS" not in df.columns and "ISSUE_TYPE" in df.columns:
+        df["ACTION_STEPS"] = df["ISSUE_TYPE"].astype(str).map(get_action_steps)
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
         wb = writer.book
@@ -847,19 +951,19 @@ def build_excel(conv_df: pd.DataFrame, today_str: str) -> bytes:
         ws1.set_column(0, 0, 28)
         ws1.set_column(1, 1, 20)
 
-        total      = len(conv_df)
-        resolved   = conv_df["IS_RESOLVED"].sum()
-        unresolved = conv_df["IS_UNRESOLVED"].sum()
+        total      = len(df)
+        resolved   = df["IS_RESOLVED"].sum()
+        unresolved = df["IS_UNRESOLVED"].sum()
         crr        = round(resolved / total * 100, 1) if total else 0
-        avg_crt    = conv_df["AVG_CRT_MINS"].mean()
-        avg_csat   = conv_df["CSAT_PROXY"].mean()
+        avg_crt    = df["AVG_CRT_MINS"].mean()
+        avg_csat   = df["CSAT_PROXY"].mean()
 
-        today_df   = conv_df[conv_df["LAST_MSG_TIME"].dt.normalize() == pd.Timestamp(today_str)]
+        today_df   = df[df["LAST_MSG_TIME"].dt.normalize() == pd.Timestamp(today_str)]
         hi_today   = len(today_df[today_df["PRIORITY"] == "High"])
 
         summary_data = [
             ["METRIC", "VALUE"],
-            ["Total Conversations (7 days)", total],
+            ["Total Conversations", total],
             ["Today's Conversations", len(today_df)],
             ["Resolved Conversations", int(resolved)],
             ["Unresolved Conversations", int(unresolved)],
@@ -867,7 +971,7 @@ def build_excel(conv_df: pd.DataFrame, today_str: str) -> bytes:
             ["Avg Chat Response Time (CRT)", fmt_mins(avg_crt)],
             ["Avg CSAT Proxy Score (1–5)", round(avg_csat, 2) if not np.isnan(avg_csat) else "—"],
             ["Today's High Priority Chats", hi_today],
-            ["Platforms", ", ".join(conv_df["PLATFORM"].unique().tolist())],
+            ["Platforms", ", ".join(df["PLATFORM"].astype(str).unique().tolist())],
         ]
 
         ws1.write(0, 0, f"Chat Analyzer Summary — {today_str}", wb.add_format(
@@ -879,19 +983,18 @@ def build_excel(conv_df: pd.DataFrame, today_str: str) -> bytes:
             ws1.write(i, 0, label, sub_fmt)
             ws1.write(i, 1, val, cell_fmt)
 
-        # Issue type breakdown
         ws1.write(14, 0, "ISSUE TYPE BREAKDOWN", sub_fmt)
         ws1.write(14, 1, "COUNT", hdr_fmt)
-        for i, (issue, cnt) in enumerate(conv_df["ISSUE_TYPE"].value_counts().items(), start=15):
+        for i, (issue, cnt) in enumerate(df["ISSUE_TYPE"].value_counts().items(), start=15):
             ws1.write(i, 0, issue, cell_fmt)
             ws1.write(i, 1, int(cnt), num_fmt)
 
         # ── Sheet 2 : Today Priority Chats ───────────────────────────────────
-        priority_cols = [
-            "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "BUYER_NAME",
+        priority_cols = [c for c in [
+            "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "TEAM_MEMBER", "BUYER_NAME",
             "ISSUE_TYPE", "PRIORITY", "SENTIMENT", "IS_UNRESOLVED",
-            "CSAT_PROXY", "AVG_CRT_MINS", "BUYER_SUMMARY", "SUGGESTED_REPLY",
-        ]
+            "CSAT_PROXY", "AVG_CRT_MINS", "IS_CONVERSION", "BUYER_SUMMARY", "SUGGESTED_REPLY",
+        ] if c in df.columns]
         today_pri = today_df.sort_values(
             "PRIORITY",
             key=lambda s: s.map({"High": 0, "Medium": 1, "Low": 2}).fillna(3)
@@ -899,40 +1002,35 @@ def build_excel(conv_df: pd.DataFrame, today_str: str) -> bytes:
 
         today_pri.to_excel(writer, sheet_name="Today Priority Chats", index=False)
         ws2 = writer.sheets["Today Priority Chats"]
-        ws2.set_column(0, 0, 40)
-        ws2.set_column(1, 5, 15)
-        ws2.set_column(10, 11, 50)
+        ws2.set_column(0, 0, 40); ws2.set_column(1, 5, 15); ws2.set_column(10, 13, 50)
         for c_idx, col in enumerate(today_pri.columns):
             ws2.write(0, c_idx, col, hdr_fmt)
 
         # ── Sheet 3 : Detailed Chat Analysis ─────────────────────────────────
-        detail_cols = [
+        detail_cols = [c for c in [
             "CONVERSATION_ID", "PLATFORM", "STORE_CODE", "SITE_NICK_NAME_ID",
-            "COUNTRY_CODE", "BUYER_NAME", "FIRST_MSG_TIME", "LAST_MSG_TIME",
+            "COUNTRY_CODE", "TEAM_MEMBER", "BUYER_NAME", "FIRST_MSG_TIME", "LAST_MSG_TIME",
             "MSG_COUNT", "ISSUE_TYPE", "PRIORITY", "SENTIMENT",
             "IS_RESOLVED", "IS_UNRESOLVED", "CSAT_PROXY", "AVG_CRT_MINS",
-            "BUYER_SUMMARY", "SUGGESTED_REPLY",
-        ]
-        detail = conv_df[detail_cols].copy()
+            "IS_CONVERSION", "BUYER_SUMMARY", "SUGGESTED_REPLY",
+        ] if c in df.columns]
+        detail = df[detail_cols].copy()
         detail["FIRST_MSG_TIME"] = detail["FIRST_MSG_TIME"].dt.strftime("%Y-%m-%d %H:%M")
         detail["LAST_MSG_TIME"]  = detail["LAST_MSG_TIME"].dt.strftime("%Y-%m-%d %H:%M")
         detail.to_excel(writer, sheet_name="Detailed Chat Analysis", index=False)
         ws3 = writer.sheets["Detailed Chat Analysis"]
-        ws3.set_column(0, 0, 40)
-        ws3.set_column(7, 7, 18)
-        ws3.set_column(16, 17, 60)
+        ws3.set_column(0, 0, 40); ws3.set_column(7, 8, 18); ws3.set_column(17, 19, 60)
         for c_idx, col in enumerate(detail.columns):
             ws3.write(0, c_idx, col, hdr_fmt)
 
         # ── Sheet 4 : Unresolved Chats ────────────────────────────────────────
-        unres = conv_df[conv_df["IS_UNRESOLVED"]][priority_cols].sort_values(
+        unres = df[df["IS_UNRESOLVED"]][priority_cols].sort_values(
             "PRIORITY",
             key=lambda s: s.map({"High": 0, "Medium": 1, "Low": 2}).fillna(3)
         )
         unres.to_excel(writer, sheet_name="Unresolved Chats", index=False)
         ws4 = writer.sheets["Unresolved Chats"]
-        ws4.set_column(0, 0, 40)
-        ws4.set_column(10, 11, 50)
+        ws4.set_column(0, 0, 40); ws4.set_column(10, 13, 50)
         for c_idx, col in enumerate(unres.columns):
             ws4.write(0, c_idx, col, hdr_fmt)
 
@@ -1007,96 +1105,121 @@ def sentiment_span(s: str) -> str:
 # SIDEBAR FILTERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def apply_filters(conv_df: pd.DataFrame) -> pd.DataFrame:
+def apply_filters(conv_df: pd.DataFrame, today_ts: pd.Timestamp) -> pd.DataFrame:
+    """
+    All filter OPTIONS are drawn from the full conv_df (source data) so they
+    never disappear. Selections are then applied to produce the filtered result.
+    """
+    src = conv_df  # keep full source for populating option lists
+
     st.sidebar.markdown("## 🔍 Filters")
     st.sidebar.markdown("---")
 
-    # Platform
-    platforms = ["All"] + sorted(conv_df["PLATFORM"].unique().tolist())
-    sel_platform = st.sidebar.selectbox("Platform", platforms)
-    if sel_platform != "All":
-        conv_df = conv_df[conv_df["PLATFORM"] == sel_platform]
+    # ── Platform — options from full source ───────────────────────────────────
+    platforms = ["All"] + sorted(src["PLATFORM"].dropna().unique().tolist())
+    sel_platform = st.sidebar.selectbox("🌐 Platform", platforms)
 
-    # Date range — use Timestamp min/max to avoid pandas 3.0 dt.date issues
-    _ts_min = conv_df["LAST_MSG_TIME"].dropna().min()
-    _ts_max = conv_df["LAST_MSG_TIME"].dropna().max()
+    # ── Date Range — min/max from full source, default = last 7 days ──────────
+    _ts_min = src["LAST_MSG_TIME"].dropna().min()
+    _ts_max = src["LAST_MSG_TIME"].dropna().max()
     min_date = _ts_min.date() if pd.notna(_ts_min) else datetime.today().date()
     max_date = _ts_max.date() if pd.notna(_ts_max) else datetime.today().date()
+    default_start = max(min_date, (today_ts - pd.Timedelta(days=6)).date())
+
     date_range = st.sidebar.date_input(
-        "Date Range",
-        value=(min_date, max_date),
+        "📅 Date Range",
+        value=(default_start, max_date),
         min_value=min_date,
         max_value=max_date,
+        help="Default: last 7 days. Expand to compare Jan vs Feb or any custom range.",
     )
+
+    # ── Priority ──────────────────────────────────────────────────────────────
+    sel_prio = st.sidebar.selectbox("🔴 Priority", ["All", "High", "Medium", "Low"])
+
+    # ── Sentiment ─────────────────────────────────────────────────────────────
+    sel_sent = st.sidebar.selectbox("😊 Sentiment", ["All", "Positive", "Neutral", "Negative"])
+
+    # ── Resolution Status ─────────────────────────────────────────────────────
+    sel_res = st.sidebar.selectbox("✅ Resolution Status", ["All", "Resolved", "Unresolved"])
+
+    # ── Issue Type — options from full source ─────────────────────────────────
+    issue_opts = ["All"] + sorted(src["ISSUE_TYPE"].dropna().unique().tolist())
+    sel_issue = st.sidebar.selectbox("🏷️ Issue Type", issue_opts)
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔎 Search & Filter")
+
+    # ── Team Member — options from full source ────────────────────────────────
+    if "TEAM_MEMBER" in src.columns:
+        all_agents = sorted(src["TEAM_MEMBER"].dropna().unique().tolist())
+        sel_agents = st.sidebar.multiselect("👤 Team Member", all_agents)
+    else:
+        sel_agents = []
+
+    # ── Store Code — options from full source ─────────────────────────────────
+    all_stores = sorted(src["STORE_CODE"].dropna().unique().tolist())
+    sel_stores = st.sidebar.multiselect("🏪 Store Code", all_stores)
+
+    # ── Country — options from full source ────────────────────────────────────
+    all_countries = sorted(src["COUNTRY_CODE"].dropna().unique().tolist())
+    sel_countries = st.sidebar.multiselect("🌍 Country", all_countries)
+
+    # ── Buyer Name free-text ──────────────────────────────────────────────────
+    buyer_search = st.sidebar.text_input("🔍 Buyer Name")
+
+    # ── Conversation ID free-text ─────────────────────────────────────────────
+    conv_search = st.sidebar.text_input("🔍 Conversation ID")
+
+    # ── Apply all filters to source ───────────────────────────────────────────
+    result = src.copy()
+
+    if sel_platform != "All":
+        result = result[result["PLATFORM"] == sel_platform]
+
     if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-        # Compare against Timestamps for pandas 3.0 compatibility
         start_ts = pd.Timestamp(date_range[0])
         end_ts   = pd.Timestamp(date_range[1]) + pd.Timedelta(hours=23, minutes=59, seconds=59)
-        conv_df = conv_df[
-            (conv_df["LAST_MSG_TIME"] >= start_ts) &
-            (conv_df["LAST_MSG_TIME"] <= end_ts)
+        result = result[
+            (result["LAST_MSG_TIME"] >= start_ts) &
+            (result["LAST_MSG_TIME"] <= end_ts)
         ]
 
-    # Priority
-    prio_opts = ["All", "High", "Medium", "Low"]
-    sel_prio = st.sidebar.selectbox("Priority", prio_opts)
     if sel_prio != "All":
-        conv_df = conv_df[conv_df["PRIORITY"] == sel_prio]
+        result = result[result["PRIORITY"] == sel_prio]
 
-    # Sentiment
-    sent_opts = ["All", "Positive", "Neutral", "Negative"]
-    sel_sent = st.sidebar.selectbox("Sentiment", sent_opts)
     if sel_sent != "All":
-        conv_df = conv_df[conv_df["SENTIMENT"] == sel_sent]
+        result = result[result["SENTIMENT"] == sel_sent]
 
-    # Resolved
-    res_opts = ["All", "Resolved", "Unresolved"]
-    sel_res = st.sidebar.selectbox("Resolution Status", res_opts)
     if sel_res == "Resolved":
-        conv_df = conv_df[conv_df["IS_RESOLVED"]]
+        result = result[result["IS_RESOLVED"]]
     elif sel_res == "Unresolved":
-        conv_df = conv_df[conv_df["IS_UNRESOLVED"]]
+        result = result[result["IS_UNRESOLVED"]]
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🔎 Search")
-
-    # STORE_CODE
-    stores = sorted(conv_df["STORE_CODE"].dropna().unique().tolist())
-    sel_stores = st.sidebar.multiselect("Store Code", stores)
-    if sel_stores:
-        conv_df = conv_df[conv_df["STORE_CODE"].isin(sel_stores)]
-
-    # SITE_NICK_NAME_ID
-    sites = sorted(conv_df["SITE_NICK_NAME_ID"].dropna().unique().tolist())
-    sel_sites = st.sidebar.multiselect("Site Nickname", sites)
-    if sel_sites:
-        conv_df = conv_df[conv_df["SITE_NICK_NAME_ID"].isin(sel_sites)]
-
-    # COUNTRY_CODE
-    countries = sorted(conv_df["COUNTRY_CODE"].dropna().unique().tolist())
-    sel_countries = st.sidebar.multiselect("Country Code", countries)
-    if sel_countries:
-        conv_df = conv_df[conv_df["COUNTRY_CODE"].isin(sel_countries)]
-
-    # BUYER_NAME free text search
-    buyer_search = st.sidebar.text_input("Buyer Name (search)")
-    if buyer_search:
-        conv_df = conv_df[conv_df["BUYER_NAME"].str.contains(buyer_search, case=False, na=False)]
-
-    # CONVERSATION_ID free text
-    conv_search = st.sidebar.text_input("Conversation ID (search)")
-    if conv_search:
-        conv_df = conv_df[conv_df["CONVERSATION_ID"].str.contains(conv_search, case=False, na=False)]
-
-    # Issue type
-    issue_opts = ["All"] + sorted(conv_df["ISSUE_TYPE"].unique().tolist())
-    sel_issue = st.sidebar.selectbox("Issue Type", issue_opts)
     if sel_issue != "All":
-        conv_df = conv_df[conv_df["ISSUE_TYPE"] == sel_issue]
+        result = result[result["ISSUE_TYPE"] == sel_issue]
+
+    if sel_agents:
+        result = result[result["TEAM_MEMBER"].isin(sel_agents)]
+
+    if sel_stores:
+        result = result[result["STORE_CODE"].isin(sel_stores)]
+
+    if sel_countries:
+        result = result[result["COUNTRY_CODE"].isin(sel_countries)]
+
+    if buyer_search:
+        result = result[result["BUYER_NAME"].str.contains(buyer_search, case=False, na=False)]
+
+    if conv_search:
+        result = result[result["CONVERSATION_ID"].str.contains(conv_search, case=False, na=False)]
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**{len(conv_df):,}** conversations match filters")
-    return conv_df
+    total = len(result)
+    st.sidebar.markdown(f"**{total:,}** of **{len(src):,}** conversations")
+    if total == 0:
+        st.sidebar.warning("No results — try widening the date range or clearing filters.")
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1126,32 +1249,32 @@ def main():
         """)
         return
 
-    # ── Load & Filter ─────────────────────────────────────────────────────────
+    # ── Load ALL Data ─────────────────────────────────────────────────────────
     with st.spinner("⏳ Loading chat data…"):
         raw_df = load_data(uploaded.read())
 
-    # pandas 3.0 fix: .dt.date.max() fails with NaT/float mixing — use Timestamp.max() then .date()
+    # pandas 3.0 fix: use .dropna().max() on Timestamp series, never .dt.date.max()
     _max_ts = raw_df["MESSAGE_TIME"].dropna().max()
+    _min_ts = raw_df["MESSAGE_TIME"].dropna().min()
     today_date = _max_ts.date() if pd.notna(_max_ts) else datetime.today().date()
-    today_str = today_date.strftime("%Y-%m-%d")
-    today_ts  = pd.Timestamp(today_date)          # used throughout for comparisons
-
-    # Filter to last 7 days — compare Timestamps, not date objects
-    cutoff = today_ts - timedelta(days=6)
-    df_7day = raw_df[raw_df["MESSAGE_TIME"] >= cutoff].copy()
+    today_str  = today_date.strftime("%Y-%m-%d")
+    today_ts   = pd.Timestamp(today_date)
+    data_start = _min_ts.date() if pd.notna(_min_ts) else today_date
 
     st.success(
-        f"✅ Loaded **{len(raw_df):,}** messages across "
-        f"**{raw_df['PLATFORM'].nunique()}** platforms. "
-        f"Analysing last 7 days: **{cutoff.date()}** → **{today_date}**"
+        f"✅ Loaded **{len(raw_df):,}** messages · "
+        f"**{raw_df['CONVERSATION_ID'].nunique():,}** conversations · "
+        f"**{raw_df['PLATFORM'].nunique()}** platforms · "
+        f"Data range: **{data_start}** → **{today_date}**"
     )
 
-    # ── Analyse ───────────────────────────────────────────────────────────────
-    with st.spinner("🔍 Analysing conversations (sentiment · issue type · CRT · CSAT)…"):
-        conv_df = analyse(df_7day)
+    # ── Analyse ALL conversations (full dataset) ───────────────────────────────
+    with st.spinner("🔍 Analysing conversations — this runs once and is cached…"):
+        conv_df = analyse(raw_df)
+    del raw_df; gc.collect()   # free raw messages from memory immediately after analysis
 
-    # ── Sidebar Filters ───────────────────────────────────────────────────────
-    conv_filtered = apply_filters(conv_df)
+    # ── Sidebar Filters (default = last 7 days view) ───────────────────────────
+    conv_filtered = apply_filters(conv_df, today_ts)
 
     if conv_filtered.empty:
         st.warning("No conversations match the current filters.")
@@ -1455,6 +1578,36 @@ def main():
                     (conv_filtered["LAST_MSG_TIME"] >= TEAM_START_DATE)
                 ]
 
+            # If "Others" selected, show a sub-breakdown by store code
+            if agent_sel == "Others" and not drilldown_df.empty:
+                st.markdown("**Others — Store Code Breakdown**")
+                others_summary = (
+                    drilldown_df.groupby("STORE_CODE")
+                    .agg(
+                        Conversations=("CONVERSATION_ID", "count"),
+                        Unresolved=("IS_UNRESOLVED", "sum"),
+                        Avg_CSAT=("CSAT_PROXY", "mean"),
+                        Platform=("PLATFORM", lambda x: x.mode().iloc[0] if not x.empty else "—"),
+                        Country=("COUNTRY_CODE", lambda x: x.mode().iloc[0] if not x.empty else "—"),
+                    )
+                    .reset_index()
+                    .sort_values("Conversations", ascending=False)
+                )
+                others_summary["Avg_CSAT"] = others_summary["Avg_CSAT"].round(1)
+                others_summary["CRR%"] = (
+                    (others_summary["Conversations"] - others_summary["Unresolved"])
+                    / others_summary["Conversations"] * 100
+                ).round(1)
+                st.dataframe(others_summary, use_container_width=True, hide_index=True,
+                    column_config={
+                        "Conversations": st.column_config.NumberColumn("Conv"),
+                        "Unresolved":    st.column_config.NumberColumn("Unresolved"),
+                        "Avg_CSAT":      st.column_config.NumberColumn("CSAT", format="%.1f"),
+                        "CRR%":          st.column_config.NumberColumn("CRR %", format="%.1f%%"),
+                    }
+                )
+                st.markdown("**All Conversations — Others**")
+
             drill_cols = [
                 "CONVERSATION_ID", "STORE_CODE", "SITE_NICK_NAME_ID", "COUNTRY_CODE",
                 "BUYER_NAME", "LAST_MSG_TIME", "ISSUE_TYPE", "PRIORITY",
@@ -1473,6 +1626,61 @@ def main():
                     "IS_CONVERSION": st.column_config.CheckboxColumn("Conversion?"),
                 },
             )
+
+            # ── Others — stores not assigned to any agent ─────────────────────
+            st.markdown("---")
+            st.markdown("**🔍 Unassigned / Other Stores in This Data**")
+            st.caption("Based on current sidebar filters — change filters to see different stores.")
+            all_known = set(STORE_TO_AGENT.keys())
+            if "STORE_CODE" in conv_filtered.columns:
+                others_stores = sorted(
+                    s for s in conv_filtered["STORE_CODE"].dropna().unique()
+                    if str(s).strip().upper() not in all_known and str(s).strip()
+                )
+                if others_stores:
+                    others_rows = []
+                    for sc in others_stores:
+                        sc_df = conv_filtered[conv_filtered["STORE_CODE"] == sc]
+                        # Most common site nickname & country for this store
+                        site = (
+                            sc_df["SITE_NICK_NAME_ID"].mode().iloc[0]
+                            if "SITE_NICK_NAME_ID" in sc_df.columns and not sc_df["SITE_NICK_NAME_ID"].dropna().empty
+                            else "—"
+                        )
+                        country = (
+                            sc_df["COUNTRY_CODE"].mode().iloc[0]
+                            if "COUNTRY_CODE" in sc_df.columns and not sc_df["COUNTRY_CODE"].dropna().empty
+                            else "—"
+                        )
+                        platform = (
+                            sc_df["PLATFORM"].mode().iloc[0]
+                            if "PLATFORM" in sc_df.columns and not sc_df["PLATFORM"].dropna().empty
+                            else "—"
+                        )
+                        others_rows.append({
+                            "Store Code":      sc,
+                            "Site Nickname":   site,
+                            "Platform":        platform,
+                            "Country":         country,
+                            "Conversations":   len(sc_df),
+                            "Unresolved":      int(sc_df["IS_UNRESOLVED"].sum()) if "IS_UNRESOLVED" in sc_df.columns else 0,
+                            "Avg CSAT":        round(sc_df["CSAT_PROXY"].mean(), 1) if "CSAT_PROXY" in sc_df.columns else "—",
+                            "Assign To":       "⚠️ Not assigned",
+                        })
+                    others_df = pd.DataFrame(others_rows).sort_values("Conversations", ascending=False)
+                    st.dataframe(others_df, use_container_width=True, hide_index=True,
+                        column_config={
+                            "Conversations": st.column_config.NumberColumn("Conv", format="%d"),
+                            "Unresolved":    st.column_config.NumberColumn("Unresolved", format="%d"),
+                            "Avg CSAT":      st.column_config.NumberColumn("CSAT", format="%.1f"),
+                        }
+                    )
+                    st.warning(
+                        f"⚠️ **{len(others_stores)} store(s)** found with no team member assigned. "
+                        "Share these store codes to get them added to the team assignments."
+                    )
+                else:
+                    st.success("✅ All stores in this dataset are assigned to team members.")
 
             # ── Store assignments reference ───────────────────────────────────
             with st.expander("📋 Store → Agent Assignment Reference"):
@@ -1527,19 +1735,36 @@ def main():
 
     # ── Excel Download ────────────────────────────────────────────────────────
     st.markdown('<div class="section-title">⬇️ Download Report</div>', unsafe_allow_html=True)
-    with st.spinner("Building Excel report…"):
-        excel_bytes = build_excel(conv_filtered, today_str)
+    cutoff_7d = today_ts - pd.Timedelta(days=6)
+    conv_7day = conv_df[conv_df["LAST_MSG_TIME"] >= cutoff_7d].copy()
 
-    st.download_button(
-        label="📥 Download Full Excel Report",
-        data=excel_bytes,
-        file_name=f"Chat_Analysis_{today_str}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
+    dl_col1, dl_col2 = st.columns(2)
+    with dl_col1:
+        if st.button(f"📊 Generate Last 7 Days Report", use_container_width=True):
+            with st.spinner("Building report…"):
+                excel_7day = build_excel(conv_7day, today_str)
+            st.download_button(
+                label=f"📥 Download ({cutoff_7d.date()} → {today_date})",
+                data=excel_7day,
+                file_name=f"Chat_Analysis_Last7Days_{today_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+    with dl_col2:
+        if st.button("📊 Generate Filtered View Report", use_container_width=True):
+            with st.spinner("Building report…"):
+                excel_filtered = build_excel(conv_filtered, today_str)
+            st.download_button(
+                label="📥 Download Filtered View",
+                data=excel_filtered,
+                file_name=f"Chat_Analysis_Filtered_{today_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
     st.caption(
-        "Excel contains: **Summary Dashboard** · **Today Priority Chats** · "
-        "**Detailed Chat Analysis** · **Unresolved Chats**"
+        "Click **Generate** first, then **Download**. "
+        "**Last 7 Days** = default daily export · "
+        "**Filtered View** = matches current sidebar selection."
     )
 
 
